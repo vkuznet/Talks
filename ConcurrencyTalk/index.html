@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+
+    <title>reveal.js - The HTML Presentation Framework</title>
+
+    <meta name="description" content="A world of concurrency">
+    <meta name="author" content="Valentin Kuznetsov">
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <link rel="stylesheet" href="css/reveal.min.css">
+    <link rel="stylesheet" href="css/theme/default.css" id="theme">
+
+    <!-- For syntax highlighting -->
+    <link rel="stylesheet" href="lib/css/zenburn.css">
+
+    <!-- If the query includes 'print-pdf', use the PDF print sheet -->
+    <script>
+        document.write( '<link rel="stylesheet" href="css/print/' + ( window.location.search.match( /print-pdf/gi ) ? 'pdf' : 'paper' ) + '.css" type="text/css" media="print">' );
+    </script>
+
+    <!--[if lt IE 9]>
+    <script src="lib/js/html5shiv.js"></script>
+    <![endif]-->
+</head>
+
+<body>
+
+<div class="reveal">
+
+<!-- Any section element inside of this container is displayed as a slide -->
+<div class="slides">
+
+<section>
+    <h2>A world of concurrency</h2>
+    <h3>Story of discovery</h3>
+    <p>
+    <small>by
+        <a href="http://github.com/vkuznet">Valentin Kuznetsov</a> /
+        <a href="http://www.cornell.edu">Cornell University</a>
+    </small>
+    </p>
+</section>
+
+<section>
+    <h2>Talk outlines</h2>
+    <ul>
+        <li>Concurrency vs Parallelism</li>
+        <li>From locks to freedom</li>
+        <li>C++/Python vs Go/Erlang</li>
+        <li>Examples</li>
+    </ul>
+</section>
+
+<section>
+<div align="left">
+A deep understanding of concurrency is hard-wired into our
+brains. We react to stimulation extremely quickly, in a part
+of the brain called the amygdala, without this reaction system
+we would die. Conscious thought is just too slow, by the time
+the thought "hit the brakes" has formed itself, we have
+already done it.
+
+On a motorway, I mentally track the positions of dozens, or
+hundreds of cars, this is done without conscious thought. If I
+couldn't do this I would probably be dead.
+<br />
+<br />
+<p>Joe Armstrong, creator of 
+<a href="http://www.erlang.org">Erlang language</a></p>
+</div>
+</section>
+
+<section>
+<h2>Concurrency vs parallelism</h2>
+<br />
+<ul>
+<li>
+Concurrency
+<br />
+<small>Programming as the composition of independently executing
+    processes</small>
+</li>
+<li>
+Parallelism
+<br />
+<small>Programming as the simultaneous execution of (possibly related)
+    computations</small>
+</li>
+</ul>
+<p>Rob Pike, <a href="http://vimeo.com/49718712">Concurrency is not parallelism</a></p>
+</section>
+
+<section>
+<h2>Concurrency vs parallelism</h2>
+<br />
+<small align="left">
+    <ul>
+    <li>Concurrency is about dealing with lots of things at once.
+    <br />
+    <br />
+    A way to structure a solution to solve a problem that may
+    (but not necessarily) be parallelizable. For example, handling mouse,
+    keyboard, display, and disk drivers
+    <br />
+    <br />
+    </li>
+    <li>Parallelism is about doing lots of things at once.
+    <br />
+    <br />
+    A way to execute given solution at once, e.g. read
+    multiple files, perform calculations</li>
+</ul>
+<br />
+<br />
+If you have only one processor, your program can still be concurrent
+but it cannot be parallel. On the other hand, a well-written concurrent
+program might run efficiently in parallel on a multiprocessor.
+</small>
+</section>
+
+<section>
+<h2>Concurrent model example</h2>
+<a href="http://concur.rspace.googlecode.com/hg/talk/concur.html#slide-9">Gophers</a>
+</section>
+
+<section>
+    <h2>Threading model</h2>
+    <br />
+
+    <p>"Classical" approach: threads, semaphors, locks:
+    <pre><code>from threading import Thread
+class Worker(Thread):
+    """Thread executing tasks from a given tasks queue"""
+    def __init__(self, tasks):
+        Thread.__init__(self)
+        self.tasks = tasks
+        self.daemon = True
+        self.start()
+    def run(self):
+        """Run thread loop."""
+        while True:
+            func, args, kargs = self.tasks.get()
+            try:
+                func(*args, **kargs)
+            except Exception as exp:
+                print_exc(exp)
+            self.tasks.task_done()
+    </code></pre>
+</section>
+
+<section>
+    <h2>Threading model</h2>
+    <br />
+    <pre><code>
+from Queue import Queue
+class ThreadPool:
+    """Pool of threads consuming tasks from a queue"""
+    def __init__(self, num_threads):
+        self.tasks = Queue(num_threads)
+        for _ in xrange(num_threads):
+            Worker(self.tasks)
+
+    def add_task(self, func, *args, **kargs):
+        """Add a task to the queue"""
+        self.tasks.put((func, args, kargs))
+
+    def wait(self):
+        """Wait for completion of all the tasks in the queue"""
+        self.tasks.join()
+            </code></pre>
+
+</section>
+
+<section>
+<h2>Threading model</h2>
+<br />
+<div align="left">
+<p>What about shared resources, hah that's easy use locks, e.g.
+<ul>
+    <li>check resource</li>
+    <li>"lock" the object</li>
+    <li>do some machinery</li>
+    <li>"unlock" the object</li>
+</ul>
+</div>
+</section>
+
+<section>
+<h2>Dealing with threads</h2>
+<pre><code>lock = threading.Lock()
+
+def get_first_part():
+    lock.acquire()
+    try:
+        ... fetch data for first part from shared object
+    finally:
+        lock.release()
+    return data
+
+def get_second_part():
+    lock.acquire()
+    try:
+        ... fetch data for second part from shared object
+    finally:
+        lock.release()
+    return data
+</code></pre>
+<small align="left">
+The standard lock object doesn’t care which thread is currently holding the
+lock; if the lock is held, any thread that attempts to acquire the lock will
+block, even if the same thread is already holding the lock. Details
+<a
+    href="http://effbot.org/zone/thread-synchronization.htm#problems-with-simple-locking">here</a>
+</small>
+</section>
+
+<section>
+<h2>And here it goes</h2>
+<pre><code>def get_both_parts():
+    first = get_first_part()
+    second = get_second_part()
+    return first, second
+</code></pre>
+<small align="left">
+Are you sure it works? Some other thread modifies the resource between the
+two calls, we may end up with inconsistent data
+</small>
+<pre><code>def get_both_parts():
+    lock.acquire()
+    try:
+        first = get_first_part()
+        second = get_second_part()
+    finally:
+        lock.release()
+    return first, second
+</code></pre>
+<small align="left">
+However, this won’t work; the individual access functions will get stuck,
+because the outer function already holds the lock. To work around this,
+you can add flags to the access functions that enables the outer function
+to disable locking, but this is error-prone, and can quickly get out of hand.
+Solution is to use
+<a
+    href="http://effbot.org/zone/thread-synchronization.htm#re-entrant-locks-rlock">
+    re-entrant lock</a>
+</small>
+</section>
+
+<section>
+<h2>Threading model, what's wrong</h2>
+<p>Everything that <span style="color:#FA5858">can</span> go wrong
+<span style="color:  #FA5858">will</span> go wrong (c) Murphy</p>
+<br />
+<ul>
+    <li>threads are expensive and limited on your system</li>
+    <li>you must allocate and manage your pool</li>
+    <li>sharing data structures or memory is a way to having nightmare</li>
+    <li>locks are complex, e.g. taking to few/many or wrong locks, locks order is matter</li>
+    <li>data racing, memory management, thread safety, etc.</li>
+</ul>
+<br />
+<br />
+<pre>
+Thread safety is really hard. That's why it took me a year to
+get a threaded framework actually working :)
+</pre>
+<p>Chris Jones</p>
+</section>
+
+<section>
+<p>
+<a href="http://www.sics.se/~joe/apachevsyaws.html">
+Apache vs Yaws (Erlang)
+</a>
+</p>
+<a class="image" href="http://www.sics.se/~joe/apachevsyaws.html">
+<img src="images/apachevsyaws.jpg" alt="" />
+</a>
+<pre>
+Thoughput (KBytes/second) vs. load. Apache (blue, run on NFS) and
+(green, run on  local filesystem) dies at 4k parallel requests,
+Yaws (red, run on NFS) stays alive even at 80k parallel requests.
+</pre>
+</section>
+
+<section>
+<div align="left">
+The problem with Apache is not related to the Apache code per
+se but is due to the manner in which the underlying operating
+system (Linux) implements concurrency. We believe that any
+system implemented using operating system threads and
+processes would exhibit similar performance. Erlang does not
+make use of the underlying OS's threads and processes for
+managing its own process pool and thus does not suffer from
+these limitations.
+<br />
+<br />
+<a href="http://www.sics.se/~joe/apachevsyaws.html">http://www.sics.se/~joe/apachevsyaws.html</a>
+</div>
+</section>
+
+<section>
+<h2>Real world concurrency</h2>
+<br />
+<small align="left">
+We don't have shared memory. I have my memory, you have yours,
+we have two brains, one each, they are not joined together. To
+change your memory I send you a message, I talk or wave my
+arms. You listen, you see, your memory changes, but without
+asking you a question or observing your response I do not know
+that you have received my messages.
+<br />
+<br />
+
+People function as independent entities that communicate by sending
+messages.
+<br />
+<br />
+
+If somebody dies other people will notice and do some actions.
+<br />
+<br />
+
+These interaction patterns well-know to us, from birth onwards we learn
+to interact with the world by observing it and by sending it messages
+and observing the responses.
+<br />
+<br />
+
+That's how Erlang programs work. This simple model of programming
+is part of a model I call Concurrency Oriented Programming.
+<br />
+<br />
+<p>
+Joe Armstrong,
+<a href="http://armstrongonsoftware.blogspot.com/2006/08/concurrency-is-easy.html">
+Concurency is easy
+</a>
+</p>
+</small>
+</section>
+
+<section>
+<small align="left">
+Erlang is a general-purpose concurrent, garbage-collected programming
+language and runtime system. The sequential subset of Erlang is a
+functional language, with strict evaluation, single assignment, and
+dynamic typing. It was designed by Ericsson to support distributed,
+fault-tolerant, soft-real-time, non-stop applications. It supports hot
+swapping, so that code can be changed without stopping a system.
+<br />
+<br />
+
+While threads require external library support in most languages,
+Erlang provides language-level features for creating and managing
+processes with the aim of simplifying concurrent programming. Though all
+concurrency is explicit in Erlang, processes communicate using message
+passing instead of shared variables, which removes the need for locks.
+<br />
+<br />
+
+The first version was developed by Joe Armstrong in 1986. It was
+originally a proprietary language within Ericsson, but was released
+as open source in 1998.
+<br />
+<br />
+<a href="http://en.wikipedia.org/wiki/Erlang_(programming_language)">Wikipedia</a>
+</small>
+</section>
+
+<section>
+<h3>Erlang example</h3>
+<div align="left">Server code</div>
+<pre><code>-module(myserver).
+server(Data) ->
+    receive
+        {From,{request,X}} ->
+            {R, Data1} = fn(X, Data),
+            From ! {myserver,{reply, R}},
+            server(Data1)
+    end.
+</code></pre>
+<div align="left">Client code</div>
+<pre><code>-export([request/1]).
+request(Req) ->
+    myserver ! {self(),{request,Req}},
+    receive
+        {myserver,{reply,Rep}} ->
+            Rep
+    end.
+</code></pre>
+<div align="right">
+For more check 
+<a href="http://www.erlang.org/course/concurrent_programming.html">here</a>
+</div>
+</section>
+
+<section>
+<h2>Why we prefer python vs C++</h2>
+<div align="left">
+<a href="http://herbsutter.com/2013/05/09/gotw-1-solution/">C++</a>:
+what is the difference, if any, among the following?
+</div>
+<pre><code>widget w;                   // (a)
+
+widget w();                 // (b)
+widget w{};                 // (c)
+
+widget w(x);                // (d)
+widget w{x};                // (e)
+
+widget w = x;               // (f)
+widget w = {x};             // (g)
+
+auto w = x;                 // (h)
+auto w = widget{x};         // (i)
+</code></pre>
+
+<div align="left">Python test, what is a data type of variable "a"?</div>
+<pre><code>
+def gen():
+    for i in range(0,5): yield i
+a = [i for i in gen()]
+a = (i for i in gen())
+a = 1
+</code></pre>
+
+</section>
+
+<section>
+<h2>Why we prefer C++ vs python</h2>
+<div align="left">
+A comparison of weave with NumPy, Pyrex, Psyco, Fortran (77 and 90) and C++
+for solving Laplace's equation. Here are some timing results for a 500x500
+grid for 100 iterations.
+</div>
+<pre>
+Type of solution            Time taken (sec)
+ 
+Python (estimate)           1500.0
+Python + Psyco (estimate)   1138.0
+Python + NumPy Expression   29.3
+Blitz                       9.5
+Inline                      4.3
+Fast Inline                 2.3
+Python/Fortran              2.9
+Pyrex                       2.5
+Matlab (estimate)           29.0
+Octave (estimate)           60.0
+Pure C++                    2.16
+</pre>
+<a href="http://www.scipy.org/PerformancePython">NumPy/SciPy project</a>
+</section>
+
+<section>
+<h2>Can we have both worlds</h2>
+<ul>
+    <li>
+Fortran/C/C++ are static languages, their strength is speed, but they hard to
+program.
+<br />
+<br />
+    </li>
+    <li>
+Perl/Python/Ruby are dynamic languages, their strength is flexibility and
+readability, it is easy to write program in them, but they luck of speed.
+<br />
+<br />
+    </li>
+    <li>
+Erlang is a functional dynamic language, its stregth is concurrency, but not
+necessary speed or readibility.
+<br />
+<br />
+    </li>
+    <li>
+Go is a static language but it feels like a scripting language, plus it has
+concurrency built in.
+    </li>
+</ul>
+</section>
+
+<section>
+    <h2>Go, meet a new trend</h2>
+<small align="left">
+Go, otherwise known as Golang, is an open source, compiled, garbage-collected,
+concurrent system programming language. It was first designed and developed at
+Google Inc. beginning in September 2007 by Robert Griesemer, Rob Pike, and
+Ken Thompson.
+<br />
+<br />
+
+The language was officially announced in November 2009 and is now used in
+Google's production systems. Go's "gc" compiler targets the Linux, Mac OS X,
+FreeBSD, OpenBSD, Plan 9, and Microsoft Windows operating systems and the i386,
+amd64, and ARM processor architectures.
+<br />
+<br />
+Go aims to provide the efficiency of a statically typed compiled language with
+the ease of programming of a dynamic language. Other goals include:
+<br />
+<br />
+<ul>
+<li>
+Safety: Type-safe and memory-safe.
+</li>
+<li>
+Intuitive concurrency by providing "goroutines" and channels to communicate between them.
+</li>
+<li>
+Efficient garbage collection "with low enough overhead and no significant latency".
+</li>
+<li>
+High-speed compilation.
+</li>
+</ul>
+</small>
+<br />
+<br />
+<a href="http://en.wikipedia.org/wiki/Go_language">Wikipedia</a>
+</section>
+
+<section>
+<h3>Go code example</h3>
+<pre><code>package main
+import "fmt"
+import "time"
+import "math/rand"
+func boring(msg string, c chan string) {
+    for i := 0; ; i++ {
+        c <- fmt.Sprintf("%s %d", msg, i) // Expression to be sent
+        time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+    }
+}
+func main() {
+    c := make(chan string)  // create output channel
+    go boring("boring!", c) // submit go routine, a la thread
+    for i := 0; i < 5; i++ {
+        fmt.Printf("You say: %q\n", <-c) // Receive msg and print it
+    }
+    fmt.Println("You're boring; I'm leaving.")
+}</code></pre>
+<small>
+    code snippets from Rob Pike
+    <a href="http://talks.golang.org/2012/concurrency.slide">concurrency slides</a>
+</small>
+</section>
+
+<section>
+<h3>Go goroutines and channels</h3>
+<small align="left">
+<ul>
+    <li>goroutine is an independently executing function, launched by a go
+    statement</li>
+    <ul>
+        <li>it has its own call stack, which grows and shrinks as required</li>
+        <li>it's very cheap and it's not thread</li>
+        <li>there might be only one thread in a program with thousands of
+        goroutines</li>
+    </ul>
+    <br />
+    <li>go channel provides a connection between goroutines, allowing
+    them to communicate</li>
+    <ul>
+        <li>channel may have different data types</li>
+        <li>you can mix and multiplex channels</li>
+        <li>they're bi-directional</li>
+    </ul>
+</ul>
+<br />
+<br />
+Don't communicate by sharing memory, share memory by communicating.
+</small>
+</section>
+
+<section>
+    <h2>UNIX pipes & multicore</h2>
+    <img src="images/pipes2cores.png" alt="" width="50%" />
+</section>
+
+<section>
+<h2>Go implementation</h2>
+<pre>
+<code>package main
+import "fmt"
+import "time"
+import "math/rand"
+func boring(msg string) <-chan string { // Returns receive-only channel of strings.
+    c := make(chan string)
+    go func() { // We launch the goroutine from inside the function.
+        for i := 0; ; i++ {
+            c <- fmt.Sprintf("%s %d", msg, i)
+            time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+        }
+    }()
+    return c // Return the channel to the caller.
+}
+func multiplexer(input1, input2 <-chan string) <-chan string {
+    c := make(chan string)
+    go func() {
+        for {
+            select {
+            case s := <-input1:  c <- s
+            case s := <-input2:  c <- s
+            }
+        }
+    }()
+    return c
+}
+func main() {
+    c := multiplexer(boring("Joe"), boring("Ann"))
+    for i := 0; i < 10; i++ {
+        fmt.Println(<-c)
+    }
+    fmt.Println("You're both boring; I'm leaving.")
+}
+</code></pre>
+<small align="left">
+No locks. No condition variables. No callbacks.
+Code snippets from Rob Pike
+<a href="http://talks.golang.org/2012/concurrency.slide">concurrency slides</a>
+<br />
+<br />
+If you need more fun, go to
+<a href="http://play.golang.org/p/9U22NfrXeq">Go playground</a> or look at
+concurrent implementation of
+<a href="http://golang.org/test/chan/powser1.go">power series</a>.
+</small>
+</section>
+
+<section>
+<h3>Real world example</h3>
+<div align="left">
+Write a code which will fetch data in parallel from provided list of URLs.
+</div>
+<br />
+<ul>
+<li><a href="https://github.com/vkuznet/urlfetch">Erlang implementation</a></li>
+<li><a href="https://github.com/vkuznet/urlfetch2go">Go implementation</a></li>
+<li><a
+    href="https://github.com/dmwm/DAS/blob/master/src/python/DAS/utils/pycurl_manager.py">Python
+    implementation</a>(via pycurl/Curl libraries)</li>
+<li>C++ implementation, your home work</li>
+</ul>
+</section>
+
+<section>
+<h3>References:</h3>
+    <ol>
+        <li><a
+            href="http://en.wikipedia.org/wiki/Communicating_sequential_processes">CSP
+            model</a></li>
+        <li><a href="http://www.erlang.org">Erlang language</a></li>
+        <li><a href="http://golang.org">Go language</a></li>
+        <li><a
+            href="https://code.google.com/p/go-wiki/wiki/GoForCPPProgrammers">Go
+            for C++ Programmers</a></li>
+        <li>Rob Pike, <a
+            href="http://concur.rspace.googlecode.com/hg/talk/concur.html">
+            Go language</a></li>
+        <li>Rob Pike, <a href="https://vimeo.com/49718712">Concurrency Is Not
+            Parallelism</a></li>
+        <li>Rob Pike, <a href="http://talks.golang.org/2012/concurrency.slide">
+        Go Concurrency Patterns</a></li>
+    </ol>
+</section>
+
+<section>
+<h1>THE END</h1>
+</section>
+
+</div> <!-- end of reveal -->
+
+</div> <!-- end of slides -->
+
+<script src="lib/js/head.min.js"></script>
+<script src="js/reveal.min.js"></script>
+
+<script>
+
+// Full list of configuration options available here:
+// https://github.com/hakimel/reveal.js#configuration
+Reveal.initialize({
+    controls: true,
+    progress: true,
+    history: true,
+    center: true,
+
+    theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+    transition: Reveal.getQueryHash().transition || 'default', // default/cube/page/concave/zoom/linear/fade/none
+
+    // Optional libraries used to extend on reveal.js
+    dependencies: [
+        { src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+        { src: 'plugin/markdown/showdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+        { src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+        { src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+        { src: 'plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+        { src: 'plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }
+        // { src: 'plugin/search/search.js', async: true, condition: function() { return !!document.body.classList; } }
+        // { src: 'plugin/remotes/remotes.js', async: true, condition: function() { return !!document.body.classList; } }
+    ]
+});
+
+</script>
+
+</body>
+</html>
+
