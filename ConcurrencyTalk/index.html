@@ -652,6 +652,78 @@ Write a code which will fetch data in parallel from provided list of URLs.
 </section>
 
 <section>
+<h2>Erlang implementation</h2>
+<pre>
+<code>process_urls(L) ->
+    process_urls(L, []).
+process_urls([Url|T], Results) ->
+    Id = urlfetch_uuid:new(),
+    Payload = "",
+    Headers = "",
+    spawn(fetch, [Id, Url, get, Payload, Headers]),
+    Output = get_result(Id),
+    process_urls(T, Results++[Output]);
+process_urls([], Results) -> Results.
+</code></pre>
+<small align="left">
+Spawn processes with fetch function through the recursion.
+</small>
+</section>
+
+<section>
+<h2>Go implementation</h2>
+<pre>
+<code>
+func RequestHandler(w http.ResponseWriter, r *http.Request) {
+    ch := make(chan []byte)
+    for _, url := range urls {
+        go Fetch(url, ch)
+    }
+    for i:=0; i < len(urls); i++ {
+        w.Write(<-ch)
+        w.Write([]byte("\n"))
+    }
+}
+</code></pre>
+<small align="left">
+Submit go-routines and collect results via channel
+</small>
+</section>
+
+<section>
+<h2>Python implementation</h2>
+<pre>
+<code>import pycurl
+def multirequest(self, url_params, headers=None, ckey=None, cert=None):
+    multi = pycurl.CurlMulti()
+    for url, params in url_params:
+        curl = pycurl.Curl()
+        bbuf, hbuf = self.set_opts(curl, url, params, headers, ckey, cert)
+        multi.add_handle(curl)
+        while True:
+            ret, num_handles = multi.perform()
+            if  ret != pycurl.E_CALL_MULTI_PERFORM:
+                break
+        while num_handles:
+            ret = multi.select(1.0)
+            if  ret == -1:
+                continue
+            while 1:
+                ret, num_handles = multi.perform()
+                if  ret != pycurl.E_CALL_MULTI_PERFORM:
+                    break
+        _numq, response, _err = multi.info_read()
+        for _cobj in response:
+            yield bbuf.getvalue()
+            bbuf.flush()
+            hbuf.flush()
+</code></pre>
+<small align="left">
+Multiple nested loops via third-party library
+</small>
+</section>
+
+<section>
 <h3>References:</h3>
     <ol>
         <li><a
