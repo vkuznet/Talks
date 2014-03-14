@@ -60,6 +60,7 @@
 
 <section>
 <div align="left">
+<em>
 A deep understanding of concurrency is hard-wired into our
 brains. We react to stimulation extremely quickly, in a part
 of the brain called the amygdala, without this reaction system
@@ -70,31 +71,13 @@ already done it.
 On a motorway, I mentally track the positions of dozens, or
 hundreds of cars, this is done without conscious thought. If I
 couldn't do this I would probably be dead.
+</em>
 <br />
 <br />
 <p>Joe Armstrong, creator of 
 <a href="http://www.erlang.org">Erlang language</a></p>
+<br/>
 </div>
-</section>
-
-<section>
-<h2>Concurrency vs parallelism</h2>
-<br />
-<ul>
-<li>
-Concurrency
-<br />
-<small>Programming as the composition of independently executing
-    processes</small>
-</li>
-<li>
-Parallelism
-<br />
-<small>Programming as the simultaneous execution of (possibly related)
-    computations</small>
-</li>
-</ul>
-<p>Rob Pike, <a href="http://vimeo.com/49718712">Concurrency is not parallelism</a></p>
 </section>
 
 <section>
@@ -122,6 +105,9 @@ Parallelism
 If you have only one processor, your program can still be concurrent
 but it cannot be parallel. On the other hand, a well-written concurrent
 program might run efficiently in parallel on a multiprocessor.
+<br/>
+<br/>
+<p>Rob Pike, <a href="http://vimeo.com/49718712">Concurrency is not parallelism</a></p>
 </small>
 </section>
 
@@ -129,6 +115,32 @@ program might run efficiently in parallel on a multiprocessor.
 <h2>Concurrent model example</h2>
 <a href="http://concur.rspace.googlecode.com/hg/talk/concur.html#slide-9">Gophers</a>
 </section>
+
+<section>
+<h2>Concurrency vs parallelism</h2>
+<div align="left">
+Concurrency is a way to structure a program by breaking it into pieces that can be executed independently.
+<br/>
+<br/>
+
+Communication is the means to coordinate the independent executions.
+<br/>
+<br/>
+
+This is the Erlang/Go-language model and (and others) it's based on
+<a href="https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=2&ved=0CDYQFjAB&url=http%3A%2F%2Fwww.cs.ucf.edu%2Fcourses%2Fcop4020%2Fsum2009%2FCSP-hoare.pdf&ei=KwAjU_-4EseR0QHHsIHABw&usg=AFQjCNH_2pBQTbyLFBg7rriMujhqTS9GKg&sig2=u5N0LGVNicIyLEbIfzcZgQ&bvm=bv.62922401,d.dmQ">CSP paper</a> by C.A.R. Hoare [1978]
+<br/>
+<br/>
+<ul><li>
+<small>
+Communicating Sequential Processes (CSP) is a formal language for describing
+patterns of interaction in concurrent systems based on message passing via
+channels.
+</small>
+</li>
+</ul>
+</section>
+
 
 <section>
     <h2>Threading model</h2>
@@ -255,8 +267,8 @@ Solution is to use
 
 <section>
 <h2>Threading model, what's wrong</h2>
-<p>Everything that <span style="color:#FA5858">can</span> go wrong
-<span style="color:  #FA5858">will</span> go wrong (c) Murphy</p>
+<p><em>Everything that <span style="color:#FA5858">can</span> go wrong
+    <span style="color:  #FA5858">will</span> go wrong</em> (c) Murphy</p>
 <br />
 <ul>
     <li>threads are expensive and limited on your system</li>
@@ -267,11 +279,13 @@ Solution is to use
 </ul>
 <br />
 <br />
-<pre>
+<small>
+<em>
 Thread safety is really hard. That's why it took me a year to
 get a threaded framework actually working :)
-</pre>
+</em>
 <p>Chris Jones</p>
+</small>
 </section>
 
 <section>
@@ -581,12 +595,7 @@ Don't communicate by sharing memory, share memory by communicating.
 </section>
 
 <section>
-    <h2>UNIX pipes & multicore</h2>
-    <img src="images/pipes2cores.png" alt="" width="50%" />
-</section>
-
-<section>
-<h2>Go implementation</h2>
+<h2>Multiplexer example</h2>
 <pre>
 <code>package main
 import "fmt"
@@ -633,6 +642,14 @@ If you need more fun, go to
 concurrent implementation of
 <a href="http://golang.org/test/chan/powser1.go">power series</a>.
 </small>
+</section>
+
+<section>
+    <h2>Concurrent model</h2>
+    <small>
+    This implementation will work equally fine on one or more cores.
+</small>
+    <img src="images/pipes2cores.png" alt="" width="50%" />
 </section>
 
 <section>
@@ -701,15 +718,15 @@ def multirequest(self, url_params, headers=None, ckey=None, cert=None):
         bbuf, hbuf = self.set_opts(curl, url, params, headers, ckey, cert)
         multi.add_handle(curl)
         while True:
-            ret, num_handles = multi.perform()
+            ret, num_handlers = multi.perform()
             if  ret != pycurl.E_CALL_MULTI_PERFORM:
                 break
-        while num_handles:
+        while num_handlers:
             ret = multi.select(1.0)
             if  ret == -1:
                 continue
             while 1:
-                ret, num_handles = multi.perform()
+                ret, num_handlers = multi.perform()
                 if  ret != pycurl.E_CALL_MULTI_PERFORM:
                     break
         _numq, response, _err = multi.info_read()
