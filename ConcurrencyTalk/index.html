@@ -292,7 +292,7 @@ get a threaded framework actually working :)
 <p>
 <a href="http://www.sics.se/~joe/apachevsyaws.html">
 Apache vs Yaws (Erlang)
-</a>
+</a> (2002)
 </p>
 <a class="image" href="http://www.sics.se/~joe/apachevsyaws.html">
 <img src="images/apachevsyaws.jpg" alt="" />
@@ -596,12 +596,11 @@ Don't communicate by sharing memory, share memory by communicating.
 
 <section>
 <h2>Multiplexer example</h2>
-<pre>
-<code>package main
+<pre><code>package main
 import "fmt"
 import "time"
 import "math/rand"
-func boring(msg string) <-chan string { // Returns receive-only channel of strings.
+func boring(msg string) <-chan string { // Returns receive-only channel
     c := make(chan string)
     go func() { // We launch the goroutine from inside the function.
         for i := 0; ; i++ {
@@ -711,29 +710,108 @@ Submit go-routines and collect results via channel
 <h2>Python implementation</h2>
 <pre>
 <code>import pycurl
-def multirequest(self, url_params, headers=None, ckey=None, cert=None):
-    multi = pycurl.CurlMulti()
-    for url, params in url_params:
+import StringIO
+def getdata(urls, ckey, cert, headers=None, num_conn=100):
+    # Make a queue with urls
+    queue = [u for u in urls if validate_url(u)]
+
+    # Check args
+    num_urls = len(queue)
+    num_conn = min(num_conn, num_urls)
+
+    # Pre-allocate a list of curl objects
+    mcurl = pycurl.CurlMulti()
+    mcurl.handles = []
+    for _ in range(num_conn):
         curl = pycurl.Curl()
-        bbuf, hbuf = self.set_opts(curl, url, params, headers, ckey, cert)
-        multi.add_handle(curl)
-        while True:
-            ret, num_handlers = multi.perform()
+        curl.fp = None
+        curl.setopt(pycurl.FOLLOWLOCATION, 1)
+        curl.setopt(pycurl.MAXREDIRS, 5)
+        curl.setopt(pycurl.CONNECTTIMEOUT, 30)
+        curl.setopt(pycurl.TIMEOUT, 300)
+        curl.setopt(pycurl.NOSIGNAL, 1)
+        curl.setopt(pycurl.SSLKEY, ckey)
+        curl.setopt(pycurl.SSLCERT, cert)
+        curl.setopt(pycurl.SSL_VERIFYPEER, False)
+        mcurl.handles.append(curl)
+        if  headers:
+            curl.setopt(pycurl.HTTPHEADER, \
+                    ["%s: %s" % (k, v) for k, v in headers.iteritems()])
+
+    # Main loop
+    freelist = mcurl.handles[:]
+    num_processed = 0
+    while num_processed < num_urls:
+        # If there is an url to process and a free curl object,
+        # add to multi-stack
+        while queue and freelist:
+            url = queue.pop(0)
+            curl = freelist.pop()
+            curl.setopt(pycurl.URL, url.encode('ascii', 'ignore'))
+            bbuf = StringIO.StringIO()
+            hbuf = StringIO.StringIO()
+            curl.setopt(pycurl.WRITEFUNCTION, bbuf.write)
+            curl.setopt(pycurl.HEADERFUNCTION, hbuf.write)
+            mcurl.add_handle(curl)
+            # store some info
+            curl.hbuf = hbuf
+            curl.bbuf = bbuf
+            curl.url = url
+        # Run the internal curl state machine for the multi stack
+        while 1:
+            ret, _num_handles = mcurl.perform()
             if  ret != pycurl.E_CALL_MULTI_PERFORM:
                 break
-        while num_handlers:
-            ret = multi.select(1.0)
-            if  ret == -1:
-                continue
-            while 1:
-                ret, num_handlers = multi.perform()
-                if  ret != pycurl.E_CALL_MULTI_PERFORM:
-                    break
-        _numq, response, _err = multi.info_read()
-        for _cobj in response:
-            yield bbuf.getvalue()
-            bbuf.flush()
-            hbuf.flush()
+        # Check for curl objects which have terminated, and add them to the
+        # freelist
+        while 1:
+            num_q, ok_list, err_list = mcurl.info_read()
+            for curl in ok_list:
+                hdrs  = curl.hbuf.getvalue()
+                data  = curl.bbuf.getvalue()
+                url   = curl.url
+                curl.bbuf.flush()
+                curl.bbuf.close()
+                curl.hbuf.close()
+                curl.hbuf = None
+                curl.bbuf = None
+                mcurl.remove_handle(curl)
+                freelist.append(curl)
+                yield {'url': url, 'data': data, 'headers': hdrs}
+            for curl, errno, errmsg in err_list:
+                hdrs  = curl.hbuf.getvalue()
+                data  = curl.bbuf.getvalue()
+                url   = curl.url
+                curl.bbuf.flush()
+                curl.bbuf.close()
+                curl.hbuf.close()
+                curl.hbuf = None
+                curl.bbuf = None
+                mcurl.remove_handle(curl)
+                freelist.append(curl)
+                yield {'url': url, 'data': None, 'headers': hdrs,
+                        'error': errmsg, 'code': errno}
+            num_processed = num_processed + len(ok_list) + len(err_list)
+            if num_q == 0:
+                break
+        # Currently no more I/O is pending, could do something in the meantime
+        # (display a progress bar, etc.).
+        # We just call select() to sleep until some more data is available.
+        mcurl.select(1.0)
+
+    cleanup(mcurl)
+
+def cleanup(mcurl):
+    "Clean-up MultiCurl handles"
+    for curl in mcurl.handles:
+        if  curl.hbuf is not None:
+            curl.hbuf.close()
+            curl.hbuf = None
+        if  curl.bbuf is not None:
+            curl.bbuf.close()
+            curl.bbuf = None
+        curl.close()
+    mcurl.close()
 </code></pre>
 <small align="left">
 Multiple nested loops via third-party library
