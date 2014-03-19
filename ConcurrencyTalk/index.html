@@ -693,6 +693,7 @@ Spawn processes with fetch function through the recursion.
 <pre>
 <code>
 func RequestHandler(w http.ResponseWriter, r *http.Request) {
+    urls := parse_input_request(r)
     ch := make(chan []byte)
     for _, url := range urls {
         go Fetch(url, ch)
