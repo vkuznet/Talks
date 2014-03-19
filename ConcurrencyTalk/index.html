@@ -613,7 +613,7 @@ func boring(msg string) <-chan string { // Returns receive-only channel
     return c // Return the channel to the caller.
 }
 func multiplexer(input1, input2 <-chan string) <-chan string {
-    c := make(chan string)
+    c := make(chan string) // output channel
     go func() {
         for {
             select {
